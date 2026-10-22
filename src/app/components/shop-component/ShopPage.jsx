@@ -1,27 +1,10 @@
 "use client";
+import Link from "next/link";
 
 import { useMemo, useState } from "react";
-import {
-  products,
-  categories,
-  tags,
-  brands,
-  priceRanges,
-  sortOptions,
-} from "./ShopData";
+import useBaseProducts, { priceRanges, sortOptions } from "./ShopData";
 
 const PAGE_SIZE = 12;
-
-/* ---------- small pieces ---------- */
-
-function HatchDivider() {
-  return (
-    <div
-      aria-hidden
-      className="mb-3 mt-2 h-2 w-full bg-[repeating-linear-gradient(-45deg,#d4d4d4_0,#d4d4d4_1px,transparent_1px,transparent_4px)]"
-    />
-  );
-}
 
 function FilterGroup({ title, children }) {
   return (
@@ -29,7 +12,10 @@ function FilterGroup({ title, children }) {
       <h3 className="text-lg font-light uppercase tracking-wide text-neutral-700">
         {title}
       </h3>
-      <HatchDivider />
+      <div
+        aria-hidden
+        className="mb-3 mt-2 h-2 w-full bg-[repeating-linear-gradient(-45deg,#d4d4d4_0,#d4d4d4_1px,transparent_1px,transparent_4px)]"
+      />
       <ul className="space-y-1.5">{children}</ul>
     </div>
   );
@@ -52,98 +38,79 @@ function FilterItem({ label, active, onClick }) {
   );
 }
 
-/* Built-in illustrations: shown whenever the real image file is missing,
-   so the design always looks complete. */
-function Illustration({ category }) {
-  const stroke = "#9ca3af";
-  const fill = "#e5e7eb";
-  const common = { fill, stroke, strokeWidth: 2, strokeLinejoin: "round", strokeLinecap: "round" };
-
-  const shapes = {
-    Phones: (
-      <>
-        <rect x="38" y="10" width="44" height="80" rx="8" {...common} />
-        <circle cx="60" cy="80" r="3" fill={stroke} />
-      </>
-    ),
-    Tablets: (
-      <>
-        <rect x="22" y="18" width="76" height="62" rx="6" {...common} />
-        <circle cx="60" cy="72" r="2.5" fill={stroke} />
-      </>
-    ),
-    Watches: (
-      <>
-        <path d="M48 8h24l3 20H45zM45 72h30l-3 20H48z" {...common} />
-        <rect x="38" y="28" width="44" height="44" rx="12" {...common} />
-        <path d="M60 38v12l8 5" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" />
-      </>
-    ),
-    Laptops: (
-      <>
-        <rect x="26" y="24" width="68" height="44" rx="4" {...common} />
-        <path d="M14 72h92l-6 10H20z" {...common} />
-      </>
-    ),
-    Accessories: (
-      <>
-        <path d="M30 62V54a30 30 0 0 1 60 0v8" fill="none" stroke={stroke} strokeWidth="4" strokeLinecap="round" />
-        <rect x="24" y="58" width="14" height="26" rx="6" {...common} />
-        <rect x="82" y="58" width="14" height="26" rx="6" {...common} />
-      </>
-    ),
-  };
-
-  return (
-    <svg viewBox="0 0 120 100" className="h-full w-full" role="img" aria-hidden>
-      {shapes[category] ?? shapes.Accessories}
-    </svg>
-  );
-}
-
-function ProductImage({ product }) {
-  const [failed, setFailed] = useState(false);
-
-  if (failed || !product.image) {
-    return <Illustration category={product.category} />;
-  }
-
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={product.image}
-      alt={product.name}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className="h-full w-full object-contain"
-    />
-  );
-}
-
 function ProductCard({ product }) {
   return (
-    <article className="flex flex-col items-center rounded-lg border border-neutral-200/80 bg-white px-4 pb-4 pt-6 text-center hover:shadow-lg cursor-pointer ">
-      <div className="h-28 w-full">
-        <ProductImage product={product} />
-      </div>
-      <h3 className="mt-5 text-xs text-neutral-800">{product.name}</h3>
-      <p className="mt-1 text-xs text-[#ff5a36]">${product.price}</p>
-    </article>
+    <Link
+      href={`/product/${product.slug}`}
+      className="block"
+      aria-label={product.name}
+    >
+      <article className="flex h-full cursor-pointer flex-col items-center rounded-lg border border-neutral-200/80 bg-white px-4 pb-4 pt-6 text-center hover:shadow-lg">
+        <div className="h-28 w-full">
+          {product.image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={product.image}
+              alt={product.name}
+              loading="lazy"
+              className="h-full w-full object-contain"
+            />
+          )}
+        </div>
+        <h3 className="mt-5 text-xs text-neutral-800">{product.name}</h3>
+        <p className="mt-1 text-xs text-[#ff5a36]">Rs. {product.price}</p>
+      </article>
+    </Link>
   );
 }
 
-/* ---------- main component ---------- */
-
 export default function ShopPage() {
+  const { products, categories, loading, error } = useBaseProducts();
+
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [selectedTags, setSelectedTags] = useState([]);
   const [selectedBrands, setSelectedBrands] = useState([]);
-  const [priceIndex, setPriceIndex] = useState(null); // index in priceRanges
+  const [priceIndex, setPriceIndex] = useState(null);
   const [sort, setSort] = useState("default");
   const [page, setPage] = useState(1);
 
-  // Any filter change sends the user back to page 1
+  const tags = useMemo(
+    () => [...new Set(products.flatMap((p) => p.tags))],
+    [products]
+  );
+
+  const brands = useMemo(
+    () => [...new Set(products.map((p) => p.brand).filter(Boolean))],
+    [products]
+  );
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const range = priceIndex !== null ? priceRanges[priceIndex] : null;
+
+    let list = products.filter((p) => {
+      if (query && !p.name.toLowerCase().includes(query)) return false;
+      if (category !== "All" && p.category !== category) return false;
+      if (selectedTags.length && !selectedTags.some((t) => p.tags.includes(t)))
+        return false;
+      if (selectedBrands.length && !selectedBrands.includes(p.brand)) return false;
+      if (range && !(p.price >= range.min && p.price < range.max)) return false;
+      return true;
+    });
+
+    if (sort === "price-asc") list = [...list].sort((a, b) => a.price - b.price);
+    if (sort === "price-desc") list = [...list].sort((a, b) => b.price - a.price);
+    if (sort === "name-asc")
+      list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+
+    return list;
+  }, [products, search, category, selectedTags, selectedBrands, priceIndex, sort]);
+
+  if (loading) return <p>Loading products...</p>;
+  if (error) return <p>{String(error)}</p>;
+  if (products.length === 0) return <p>No products found.</p>;
+
   const withReset = (setter) => (value) => {
     setter(value);
     setPage(1);
@@ -171,31 +138,10 @@ export default function ShopPage() {
     setPage(1);
   };
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const range = priceIndex !== null ? priceRanges[priceIndex] : null;
-
-    let list = products.filter((p) => {
-      if (query && !p.name.toLowerCase().includes(query)) return false;
-      if (category !== "All" && p.category !== category) return false;
-      if (selectedTags.length && !selectedTags.some((t) => p.tags.includes(t))) return false;
-      if (selectedBrands.length && !selectedBrands.includes(p.brand)) return false;
-      if (range && !(p.price >= range.min && p.price < range.max)) return false;
-      return true;
-    });
-
-    if (sort === "price-asc") list = [...list].sort((a, b) => a.price - b.price);
-    if (sort === "price-desc") list = [...list].sort((a, b) => b.price - a.price);
-    if (sort === "name-asc") list = [...list].sort((a, b) => a.name.localeCompare(b.name));
-
-    return list;
-  }, [search, category, selectedTags, selectedBrands, priceIndex, sort]);
-
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const visible = filtered.slice(startIndex, startIndex + PAGE_SIZE);
-
   const showingFrom = filtered.length === 0 ? 0 : startIndex + 1;
   const showingTo = startIndex + visible.length;
 
@@ -207,27 +153,24 @@ export default function ShopPage() {
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-8">
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_220px]">
-        {/* ---------- products ---------- */}
+        {/* products */}
         <div>
           <div className="mb-4 flex items-center justify-between text-xs text-neutral-600">
             <p>
               Showing {showingFrom}–{showingTo} of {filtered.length} results
             </p>
-
-            <label className="flex items-center gap-2">
-              <span className="sr-only">Sort products</span>
-              <select
-                value={sort}
-                onChange={(e) => withReset(setSort)(e.target.value)}
-                className="cursor-pointer bg-transparent text-xs text-neutral-600 focus:outline-none"
-              >
-                {sortOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <select
+              value={sort}
+              onChange={(e) => withReset(setSort)(e.target.value)}
+              aria-label="Sort products"
+              className="cursor-pointer bg-transparent text-xs text-neutral-600 focus:outline-none"
+            >
+              {sortOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           {visible.length > 0 ? (
@@ -249,7 +192,6 @@ export default function ShopPage() {
             </div>
           )}
 
-          {/* pagination */}
           {totalPages > 1 && (
             <nav
               aria-label="Pagination"
@@ -259,11 +201,10 @@ export default function ShopPage() {
                 type="button"
                 onClick={() => goToPage(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="hover:text-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-neutral-600"
+                className="hover:text-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Prev
               </button>
-
               {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
                 <button
                   key={n}
@@ -279,12 +220,11 @@ export default function ShopPage() {
                   {n}
                 </button>
               ))}
-
               <button
                 type="button"
                 onClick={() => goToPage(currentPage + 1)}
                 disabled={currentPage === totalPages}
-                className="hover:text-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-neutral-600"
+                className="hover:text-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
               </button>
@@ -292,9 +232,8 @@ export default function ShopPage() {
           )}
         </div>
 
-        {/* ---------- sidebar ---------- */}
+        {/* sidebar */}
         <aside>
-          {/* search */}
           <form
             role="search"
             onSubmit={(e) => e.preventDefault()}
@@ -338,27 +277,31 @@ export default function ShopPage() {
             ))}
           </FilterGroup>
 
-          <FilterGroup title="Tags">
-            {tags.map((t) => (
-              <FilterItem
-                key={t}
-                label={t}
-                active={selectedTags.includes(t)}
-                onClick={() => toggleInList(selectedTags, setSelectedTags, t)}
-              />
-            ))}
-          </FilterGroup>
+          {tags.length > 0 && (
+            <FilterGroup title="Tags">
+              {tags.map((t) => (
+                <FilterItem
+                  key={t}
+                  label={t}
+                  active={selectedTags.includes(t)}
+                  onClick={() => toggleInList(selectedTags, setSelectedTags, t)}
+                />
+              ))}
+            </FilterGroup>
+          )}
 
-          <FilterGroup title="Brands">
-            {brands.map((b) => (
-              <FilterItem
-                key={b}
-                label={b}
-                active={selectedBrands.includes(b)}
-                onClick={() => toggleInList(selectedBrands, setSelectedBrands, b)}
-              />
-            ))}
-          </FilterGroup>
+          {brands.length > 0 && (
+            <FilterGroup title="Brands">
+              {brands.map((b) => (
+                <FilterItem
+                  key={b}
+                  label={b}
+                  active={selectedBrands.includes(b)}
+                  onClick={() => toggleInList(selectedBrands, setSelectedBrands, b)}
+                />
+              ))}
+            </FilterGroup>
+          )}
 
           <FilterGroup title="Filter by price">
             {priceRanges.map((r, i) => (

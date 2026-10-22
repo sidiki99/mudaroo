@@ -1,48 +1,111 @@
-// Base items. They are repeated below to produce 55 demo products.
-// Replace this whole file with a fetch from your API / database later.
-const baseProducts = [
-  { name: "iPad (9th Gen)", price: 870, category: "Tablets", brand: "Apple", tags: ["White", "Modern"], image: "/products/ipad.jpg" },
-  { name: "Drone With Camera", price: 600, category: "Accessories", brand: "Samsung", tags: ["White", "Modern"], image: "/products/drone.jpg" },
-  { name: "Apple Watch (2nd Gen)", price: 400, category: "Watches", brand: "Apple", tags: ["Mobile", "Modern"], image: "/products/apple-watch.jpg" },
-  { name: "Ultra HD TV", price: 2000, category: "Accessories", brand: "Samsung", tags: ["Modern"], image: "/products/tv.jpg" },
-  { name: "Wireless Headphones", price: 300, category: "Accessories", brand: "Green", tags: ["White", "Mobile"], image: "/products/headphones.jpg" },
-  { name: "Smart Speaker", price: 320, category: "Accessories", brand: "Apple", tags: ["Modern"], image: "/products/smart-speaker.jpg" },
-  { name: "Studio Speaker", price: 480, category: "Accessories", brand: "Samsung", tags: ["White"], image: "/products/studio-speaker.jpg" },
-  { name: "Bluetooth Speaker", price: 75, category: "Accessories", brand: "Green", tags: ["Cheap", "White", "Mobile"], image: "/products/bluetooth-speaker.jpg" },
-  { name: "AirPods", price: 210, category: "Accessories", brand: "Apple", tags: ["White", "Mobile"], image: "/products/airpods.jpg" },
-  { name: "MacBook Pro", price: 1800, category: "Laptops", brand: "Apple", tags: ["Modern"], image: "/products/macbook.jpg" },
-  { name: "iPhone 11 Pro", price: 960, category: "Phones", brand: "Apple", tags: ["Mobile", "Modern"], image: "/products/iphone.jpg" },
-  { name: "Fitness Watch", price: 90, category: "Watches", brand: "Green", tags: ["Cheap", "Mobile"], image: "/products/fitness-watch.jpg" },
-];
+"use client";
 
-export const products = Array.from({ length: 55 }, (_, i) => {
-  const base = baseProducts[i % baseProducts.length];
-  const round = Math.floor(i / baseProducts.length);
-  return {
-    ...base,
-    id: i + 1,
-    price: base.price + round * 10, // small variation so sorting looks real
-  };
-});
+import { useEffect, useState } from "react";
+import api from "@/lib/axios";
 
-export const categories = ["All", "Phones", "Accessories", "Tablets", "Watches", "Laptops"];
-
-export const tags = ["White", "Cheap", "Mobile", "Modern"];
-
-export const brands = ["Apple", "Samsung", "Green"];
-
-// min is inclusive, max is exclusive. Use Infinity for "no upper limit".
 export const priceRanges = [
-  { label: "Less than $100", min: 0, max: 100 },
-  { label: "$100 – $500", min: 100, max: 500 },
-  { label: "$500 – $1000", min: 500, max: 1000 },
-  { label: "$1000 – $2000", min: 1000, max: 2000 },
-  { label: "$2000 & above", min: 2000, max: Infinity },
+  { label: "Under Rs. 1,000", min: 0, max: 1000 },
+  { label: "Rs. 1,000 - 3,000", min: 1000, max: 3000 },
+  { label: "Rs. 3,000 - 5,000", min: 3000, max: 5000 },
+  { label: "Rs. 5,000 and above", min: 5000, max: Infinity },
 ];
 
 export const sortOptions = [
-  { value: "default", label: "Default sorting" },
-  { value: "price-asc", label: "Price: low to high" },
-  { value: "price-desc", label: "Price: high to low" },
-  { value: "name-asc", label: "Name: A to Z" },
+  { label: "Default sorting", value: "default" },
+  { label: "Price: low to high", value: "price-asc" },
+  { label: "Price: high to low", value: "price-desc" },
+  { label: "Name: A to Z", value: "name-asc" },
 ];
+
+export default function useBaseProducts() {
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState(["All"]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchShopData() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const [productsRes, categoriesRes] = await Promise.all([
+          api.get("/products"),
+          api.get("/categories"),
+        ]);
+
+        if (!productsRes.data.success) {
+          throw new Error(productsRes.data.message || "Could not fetch products.");
+        }
+        if (!categoriesRes.data.success) {
+          throw new Error(categoriesRes.data.message || "Could not fetch categories.");
+        }
+
+        const activeCategories = (categoriesRes.data.categories ?? []).filter(
+          (c) => c.isActive !== false
+        );
+
+        // id -> name map so products can resolve their category name
+        const categoryMap = {};
+        activeCategories.forEach((c) => {
+          categoryMap[c._id] = c.name;
+        });
+
+        const formattedProducts = (productsRes.data.products ?? []).map((p) => {
+          const rawCategory = p.category ?? p.categoryId;
+          const categoryId =
+            rawCategory && typeof rawCategory === "object"
+              ? rawCategory._id
+              : rawCategory;
+          const categoryName =
+            rawCategory && typeof rawCategory === "object"
+              ? rawCategory.name
+              : categoryMap[categoryId] ?? p.categoryName ?? "";
+
+          const firstImage = p.images?.[0];
+          const image =
+            (typeof firstImage === "string" ? firstImage : firstImage?.url) ??
+            p.image ??
+            p.thumbnail ??
+            "";
+
+          return {
+            id: p._id,
+            name: p.name ?? "Unnamed product",
+            slug: p.slug ?? p._id,
+            price: Number(p.price ?? p.variants?.[0]?.price ?? 0),
+            image,
+            category: categoryName,
+            brand:
+              p.brand && typeof p.brand === "object" ? p.brand.name ?? "" : p.brand ?? "",
+            tags: Array.isArray(p.tags)
+              ? p.tags.map((t) => (typeof t === "object" ? t.name : t))
+              : [],
+          };
+        });
+
+        if (cancelled) return;
+
+        setProducts(formattedProducts);
+        setCategories(["All", ...activeCategories.map((c) => c.name)]);
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err.response?.data?.message || err.message || "Failed to load shop data."
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchShopData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { products, categories, loading, error };
+}

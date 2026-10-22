@@ -2,167 +2,339 @@
 
 import { Image, Link } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Suspense } from "react";
+import { useParams , useRouter} from "next/navigation";
+import api from "@/lib/axios";
+import { useEffect, useId, useRef,} from "react";
 
-/**
- * Data-driven product detail page (React + Tailwind CSS).
- *
- * Everything on the page comes from the `product` prop, so one component
- * serves every product: any number of option groups (Color, Size, Storage...),
- * per-variant price / stock / SKU, and images that jump to the chosen option.
- *
- * Tailwind note: the coral accent uses arbitrary values (#ff6a45). If you
- * prefer, add it to tailwind.config as `colors.accent` and replace them.
- */
+
 
 export  default function ProductDetails(){
   return(
     <>
-    <ProductDetail/>
-    <ProductTabs />
-    <RelatedItems />
-    <LatestPosts />
-    <BrandMarquee />
+   <Suspense fallback={<div>Loading product...</div>}>
+      <ProductDetail />
+    </Suspense>
+
+    {/* <RelatedItems /> */}
+    {/* <LatestPosts />
+    <BrandMarquee /> */}
     </>
   )
 }
 
-const sampleProduct = {
-  id: "iphone-15-pro-max",
-  title: "iPhone 15 Pro Max",
-  currency: "USD",
-  price: 2000,
-  rating: 5,
-  description:
-    "Justo, cum feugiat imperdiet nulla molestie ac vulputate scelerisque amet. Bibendum adipiscing platea blandit sit sed quam semper rhoncus.",
-  sku: "1223",
-  categories: ["Phone", "Screen Touch"],
-  tags: ["Classic", "Modern"],
-  stock: 2, // default stock when no variant matches
-  images: [
-    { src: "/images/cat3.jpg", alt: "Black iPhone", option: { Color: "Black" } },
-    { src: "/img/iphone-blue.png", alt: "Blue iPhone", option: { Color: "Blue" } },
-    { src: "/img/iphone-orange.png", alt: "Orange iPhone", option: { Color: "Orange" } },
-  ],
-  options: [
-    { name: "Color", values: ["Orange", "Green", "Blue", "Black"] },
-    { name: "Storage", values: ["128GB", "256GB", "512GB"] },
-  ],
-  // Optional: override price / stock / sku for specific combinations.
-  variants: [
-    { options: { Color: "Blue", Storage: "128GB" }, stock: 2 },
-    { options: { Color: "Blue", Storage: "256GB" }, stock: 5, price: 2200, sku: "1223-B256" },
-    { options: { Color: "Black", Storage: "128GB" }, stock: 0 },
-  ],
-};
 
-const money = (value, currency) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value);
 
-const matches = (variantOptions, selected) =>
-  Object.entries(variantOptions).every(([k, v]) => selected[k] === v);
+const money = (n) => `Rs. ${Number(n ?? 0).toLocaleString()}`;
 
- function ProductDetail({
-  product = sampleProduct,
-  onAddToCart = (item) => console.log("add to cart", item),
-  onOrderNow = (item) => console.log("order now", item),
-  onToggleWishlist = (id, on) => console.log("wishlist", id, on),
-}) {
-  // Default selection = first value of every option group.
-  const [selected, setSelected] = useState(() =>
-    Object.fromEntries((product.options ?? []).map((o) => [o.name, o.values[0]]))
-  );
+ function ProductDetail() {
+  const { slug } = useParams();
+  const router = useRouter();
+
+  const [product, setProduct] = useState(null);
+  const [categoryName, setCategoryName] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
   const [imageIndex, setImageIndex] = useState(0);
+  const [color, setColor] = useState(null);
+  const [size, setSize] = useState(null);
   const [qty, setQty] = useState(1);
   const [wished, setWished] = useState(false);
 
-  // Resolve price / stock / sku for the current selection.
-  const variant = useMemo(
-    () => product.variants?.find((v) => matches(v.options, selected)),
-    [product.variants, selected]
-  );
-  const price = variant?.price ?? product.price;
-  const stock = variant?.stock ?? product.stock ?? 0;
-  const sku = variant?.sku ?? product.sku;
-  const soldOut = stock <= 0;
-  const safeQty = Math.min(qty, Math.max(stock, 1));
+  useEffect(() => {
+    let cancelled = false;
 
-  const chooseOption = (name, value) => {
-    setSelected((s) => ({ ...s, [name]: value }));
+    async function fetchProduct() {
+      try {
+        const res = await api.get(`/products/${encodeURIComponent(slug)}`);
+
+        if (!res.data.success) {
+          throw new Error(res.data.message || "Could not fetch product.");
+        }
+
+        const fetched = res.data.filteredProduct;
+        if (!fetched) throw new Error("Product not found.");
+
+        if (cancelled) return;
+        setProduct(fetched);
+
+        // resolve category name from its id (non-fatal if it fails)
+        try {
+          const catRes = await api.get("/categories");
+          const match = (catRes.data.categories ?? []).find(
+            (c) => c._id === fetched.category
+          );
+          if (!cancelled) setCategoryName(match?.name ?? "");
+        } catch {
+          /* ignore */
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err.response?.data?.message || err.message || "Failed to load product."
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchProduct();
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+
+   
+  if (loading) return <p>Loading product...</p>;
+  if (error) return <p>{error}</p>;
+  if (!product) return <p>Product not found.</p>;
+
+  /* ---------- derived data ---------- */
+
+  const images = (product.images ?? []).map((img) =>
+    typeof img === "string" ? img : img?.url
+  );
+  const mainImage = images[imageIndex] ?? images[0];
+
+  const variants = product.variants ?? [];
+
+  const colors = [];
+  variants.forEach((v) => {
+    if (!colors.some((c) => c.color === v.color)) {
+      colors.push({ color: v.color, hex: v.colorHex });
+    }
+  });
+
+  const activeColor = color ?? variants[0]?.color;
+  const sizeVariants = variants.filter((v) => v.color === activeColor);
+  const variant =
+    sizeVariants.find((v) => v.size === size) ?? sizeVariants[0] ?? null;
+
+  const price = variant?.price ?? 0;
+  const oldPrice = variant?.oldPrice ?? 0;
+  const stock = variant?.stock ?? 0;
+  const soldOut = stock <= 0;
+  const safeQty = soldOut ? 0 : Math.min(Math.max(1, qty), stock);
+  const discount =
+    oldPrice > price ? Math.round(((oldPrice - price) / oldPrice) * 100) : 0;
+
+  /* ---------- handlers ---------- */
+
+  const chooseColor = (c) => {
+    setColor(c);
+    setSize(null);
     setQty(1);
-    // Jump to the image tied to this option, if there is one.
-    const i = product.images.findIndex((img) => img.option?.[name] === value);
-    if (i !== -1) setImageIndex(i);
   };
 
-  const cartItem = { id: product.id, selected, qty: safeQty, price, sku };
-  const image = product.images[imageIndex];
+  const chooseSize = (s) => {
+    setSize(s);
+    setQty(1);
+  };
+
+ 
+const cartItem = variant && {
+  productId: product._id,
+  variantId: variant._id,
+  slug: product.slug,
+  name: product.name,
+  image: images[0],
+  sku: variant.sku,
+  color: variant.color,
+  size: variant.size,
+  price: variant.price,
+  quantity: safeQty,
+};
+
+
+  // const onAddToCart = (item) => {
+  //   if (!item) return;
+  //   try {
+  //     const cart = JSON.parse(localStorage.getItem("cart") || "[]");
+  //     const existing = cart.find((c) => c.sku === item.sku);
+  //     if (existing) {
+  //       existing.quantity = Math.min(stock, existing.quantity + item.quantity);
+  //     } else {
+  //       cart.push(item);
+  //     }
+  //     localStorage.setItem("cart", JSON.stringify(cart));
+  //   } catch {
+  //     /* ignore */
+  //   }
+  // };
+
+  
+const onAddToCart = async (item) => {
+  try {
+    if (!item) {
+      throw new Error("Please select a product variant.");
+    }
+
+    const res = await api.post("/carts/items", {
+      productId: item.productId,
+      variantId: item.variantId,
+      quantity: item.quantity,
+    });
+
+    if (!res.data.success) {
+      throw new Error(
+        res.data.message || "Could not add product to cart."
+      );
+    }
+
+    console.log("Cart updated:", res.data.cart);
+
+    // Show success message here if you use a toast library
+    alert("Product added to cart successfully!");
+
+    return res.data.cart;
+  } catch (err) {
+    const message =
+      err.response?.data?.message ||
+      err.message ||
+      "Failed to add product to cart.";
+
+    console.error("Add to cart error:", message);
+    alert(message);
+
+    return null;
+  }
+};
+
+
+
+
+  const onOrderNow = (item) => {
+    onAddToCart(item);
+    router.push("/checkout");
+  };
+
+  /* ---------- UI ---------- */
 
   return (
+  <>  
     <section className="mx-auto grid max-w-5xl gap-6 px-4 py-10 font-light text-neutral-800 md:grid-cols-[72px_minmax(0,1fr)_minmax(0,1.1fr)] md:gap-3">
       {/* Thumbnails */}
       <div className="order-2 flex gap-2 md:order-none md:flex-col">
-        {product.images.map((img, i) => (
+        {images.map((src, i) => (
           <button
-            key={img.src}
+            key={`${src}-${i}`}
             type="button"
             onClick={() => setImageIndex(i)}
             aria-pressed={i === imageIndex}
             aria-label={`Show image ${i + 1}`}
             className={`flex h-20 w-[68px] items-center justify-center rounded border bg-white p-1.5 transition ${
-              i === imageIndex ? "border-[#ff6a45]" : "border-neutral-200 hover:border-neutral-400"
+              i === imageIndex
+                ? "border-[#ff6a45]"
+                : "border-neutral-200 hover:border-neutral-400"
             }`}
           >
-            <img src={img.src} alt="" className="max-h-full object-contain" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt="" className="max-h-full object-contain" />
           </button>
         ))}
       </div>
 
       {/* Main image */}
       <div className="order-1 flex min-h-[320px] items-center justify-center rounded border border-neutral-200 bg-white p-6 md:order-none md:min-h-[420px]">
-        {image && <img src={image.src} alt={image.alt} className="max-h-[340px] object-contain" />}
+        {mainImage && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={mainImage}
+            alt={product.name}
+            className="max-h-[340px] object-contain"
+          />
+        )}
       </div>
 
       {/* Details */}
       <div className="order-3 md:order-none md:pl-7">
-        <h1 className="text-3xl uppercase tracking-wide md:text-4xl">{product.title}</h1>
-        <p className="mt-2 text-lg text-[#e8502f]">{money(price, product.currency)}</p>
+        <h1 className="text-3xl uppercase tracking-wide md:text-4xl">
+          {product.name}
+        </h1>
 
-        <div className="mt-1 text-xs tracking-widest text-[#ff6a45]" aria-label={`${product.rating} out of 5 stars`}>
-          {"★".repeat(product.rating)}
-          <span className="text-neutral-300">{"★".repeat(5 - product.rating)}</span>
+        <div className="mt-2 flex items-center gap-3">
+          <p className="text-lg text-[#e8502f]">{money(price)}</p>
+          {discount > 0 && (
+            <>
+              <p className="text-sm text-neutral-400 line-through">
+                {money(oldPrice)}
+              </p>
+              <span className="rounded bg-[#ff6a45] px-1.5 py-0.5 text-[11px] text-white">
+                -{discount}%
+              </span>
+            </>
+          )}
         </div>
 
         <p className="mt-3 max-w-prose text-neutral-500">{product.description}</p>
         <hr className="my-4 border-neutral-200" />
 
-        {/* Option groups: rendered from data, so add/remove freely */}
-        {product.options?.map((group) => (
-          <fieldset key={group.name} className="mb-3">
-            <legend className="mb-1 underline underline-offset-4">{group.name}</legend>
-            <div className="flex flex-wrap gap-1.5">
-              {group.values.map((value) => {
-                const active = selected[group.name] === value;
+        {/* Color */}
+        {colors.length > 0 && (
+          <fieldset className="mb-3">
+            <legend className="mb-1 underline underline-offset-4">
+              Color: <span className="no-underline">{activeColor}</span>
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {colors.map((c) => {
+                const active = activeColor === c.color;
                 return (
                   <button
-                    key={value}
+                    key={c.color}
                     type="button"
-                    onClick={() => chooseOption(group.name, value)}
+                    onClick={() => chooseColor(c.color)}
                     aria-pressed={active}
-                    className={`rounded px-1.5 py-0.5 transition ${
+                    aria-label={c.color}
+                    title={c.color}
+                    className={`h-6 w-6 rounded-full border-2 transition ${
+                      active
+                        ? "border-[#ff6a45]"
+                        : "border-neutral-200 hover:border-neutral-400"
+                    }`}
+                    style={{ backgroundColor: c.hex || "#ddd" }}
+                  />
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
+
+        {/* Size */}
+        {sizeVariants.length > 0 && (
+          <fieldset className="mb-3">
+            <legend className="mb-1 underline underline-offset-4">Size</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {sizeVariants.map((v) => {
+                const active = variant?.size === v.size;
+                return (
+                  <button
+                    key={v.sku}
+                    type="button"
+                    onClick={() => chooseSize(v.size)}
+                    aria-pressed={active}
+                    disabled={v.stock <= 0}
+                    className={`rounded px-1.5 py-0.5 transition disabled:cursor-not-allowed disabled:line-through disabled:opacity-40 ${
                       active
                         ? "font-normal text-neutral-900 shadow-[inset_0_-2px_0_#ff6a45]"
                         : "text-neutral-500 hover:text-neutral-900"
                     }`}
                   >
-                    {value}
+                    {v.size}
                   </button>
                 );
               })}
             </div>
           </fieldset>
-        ))}
+        )}
 
-        <p className={`mt-3 ${soldOut ? "text-red-600" : stock <= 5 ? "text-[#e8502f]" : ""}`}>
+        <p
+          className={`mt-3 ${
+            soldOut ? "text-red-600" : stock <= 5 ? "text-[#e8502f]" : ""
+          }`}
+        >
           {soldOut ? "Out of stock" : `${stock} in stock`}
         </p>
 
@@ -178,7 +350,7 @@ const matches = (variantOptions, selected) =>
             -
           </button>
           <output className="flex h-8 w-14 items-center justify-center rounded border border-neutral-200 bg-white">
-            {soldOut ? 0 : safeQty}
+            {safeQty}
           </output>
           <button
             type="button"
@@ -197,7 +369,7 @@ const matches = (variantOptions, selected) =>
             type="button"
             disabled={soldOut}
             onClick={() => onOrderNow(cartItem)}
-            className="h-8 rounded-full bg-[#ff6a45] px-5 text-xs uppercase tracking-widest text-white transition hover:bg-[#e8502f] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+            className="h-8 cursor-pointer rounded-full bg-[#ff6a45] px-5 text-xs uppercase tracking-widest text-white transition hover:bg-[#e8502f] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Order now
           </button>
@@ -205,23 +377,26 @@ const matches = (variantOptions, selected) =>
             type="button"
             disabled={soldOut}
             onClick={() => onAddToCart(cartItem)}
-            className="h-8 rounded-full bg-neutral-900 px-5 text-xs uppercase tracking-widest text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+            className="h-8 cursor-pointer rounded-full bg-neutral-900 px-5 text-xs uppercase tracking-widest text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Add to cart
           </button>
-          <button 
+          <button
             type="button"
             aria-pressed={wished}
             aria-label={wished ? "Remove from wishlist" : "Add to wishlist"}
-            onClick={() => {
-              setWished(!wished);
-              onToggleWishlist(product.id, !wished);
-            }}
-            className={`flex h-9 w-9 items-center cursor-pointer justify-center rounded-full text-white transition ${
+            onClick={() => setWished(!wished)}
+            className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-white transition ${
               wished ? "bg-[#ff6a45]" : "bg-neutral-900 hover:bg-neutral-700"
             }`}
           >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill={wished ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill={wished ? "currentColor" : "none"}
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3 5 6.5 5c2 0 3.5 1.2 5.5 3.2C14 6.2 15.5 5 17.5 5 21 5 22.8 8.6 21.5 11.8 19.5 16.4 12 21 12 21z" />
             </svg>
           </button>
@@ -230,50 +405,51 @@ const matches = (variantOptions, selected) =>
         <hr className="my-5 border-neutral-200" />
 
         <dl className="space-y-0.5 text-[13px]">
-          <div><dt className="inline font-normal">SKU: </dt><dd className="inline">{sku}</dd></div>
-          <div><dt className="inline font-normal">Category: </dt><dd className="inline">{product.categories?.join(", ")}</dd></div>
-          <div><dt className="inline font-normal">Tags: </dt><dd className="inline">{product.tags?.join(", ")}</dd></div>
+          {variant?.sku && (
+            <div>
+              <dt className="inline font-normal">SKU: </dt>
+              <dd className="inline">{variant.sku}</dd>
+            </div>
+          )}
+          {categoryName && (
+            <div>
+              <dt className="inline font-normal">Category: </dt>
+              <dd className="inline">{categoryName}</dd>
+            </div>
+          )}
+          {product.audience && (
+            <div>
+              <dt className="inline font-normal">For: </dt>
+              <dd className="inline">{product.audience}</dd>
+            </div>
+          )}
+          {product.brand && (
+            <div>
+              <dt className="inline font-normal">Brand: </dt>
+              <dd className="inline">{product.brand}</dd>
+            </div>
+          )}
+          {product.material && (
+            <div>
+              <dt className="inline font-normal">Material: </dt>
+              <dd className="inline">{product.material}</dd>
+            </div>
+          )}
         </dl>
       </div>
     </section>
+     <ProductTabs product={product} categoryName={categoryName} />
+  </>
   );
 }
 
-import { useEffect, useId, useRef,} from "react";
-import LatestPosts from "../components/common/LatestPosts";
-import BrandMarquee from "../components/common/BrandMarquee";
 
-/**
- * Product tabs (Description / Additional information / Reviews) with a working
- * "Add a review" form. React + Tailwind CSS.
- *
- * - Tabs are keyboard accessible (arrow keys, Home, End).
- * - The review form validates, previews the chosen photo, remembers name/email
- *   if the box is ticked, and adds the review to the list right away.
- * - Wire `onSubmitReview` to your API; it receives a FormData-like object and
- *   may return a promise. If it throws, the form shows the error and keeps
- *   the review out of the list.
- */
 
-const sample = {
-  description: [
-    "Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Donec odio. Quisque volutpat mattis eros. Nullam malesuada erat ut turpis. Suspendisse urna viverra non, semper suscipit, posuere a, pede. Donec nec justo eget felis facilisis fermentum.",
-    { list: ["Donec nec justo eget felis facilisis fermentum.", "Suspendisse urna viverra non, semper suscipit pede."] },
-    "Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Donec odio. Quisque volutpat mattis eros. Aliquam porttitor mauris sit amet orci. Aenean dignissim pellentesque felis. Phasellus ultrices nulla quis nibh.",
-  ],
-  info: [
-    ["Brand", "Apple"],
-    ["Display", "6.7-inch OLED"],
-    ["Storage", "128GB / 256GB / 512GB"],
-    ["Weight", "221 g"],
-  ],
-  reviews: [
-    { id: 1, name: "Emma Chamberlin", date: "2022-11-22", rating: 5, photo: "", text: "Vitae tortor condimentum lacinia quis vel eros donec ac. Nam at lectus urna duis convallis convallis" },
-    { id: 2, name: "Thompson J.", date: "2022-11-22", rating: 5, photo: "", text: "Vitae tortor condimentum lacinia quis vel eros donec ac. Nam at lectus urna duis convallis convallis" },
-  ],
-};
+const sampleReviews = [
+  { id: 1, name: "Emma Chamberlin", date: "2022-11-22", rating: 5, photo: "", text: "Vitae tortor condimentum lacinia quis vel eros donec ac. Nam at lectus urna duis convallis convallis" },
+  { id: 2, name: "Thompson J.", date: "2022-11-22", rating: 5, photo: "", text: "Vitae tortor condimentum lacinia quis vel eros donec ac. Nam at lectus urna duis convallis convallis" },
+];
 
-const ACCENT = "#ff6a45";
 const TABS = [
   { id: "description", label: "Description" },
   { id: "info", label: "Additional information" },
@@ -389,10 +565,10 @@ function ReviewForm({ onAdd, onSubmitReview }) {
         name: form.name.trim(),
         date: new Date().toISOString(),
         rating: form.rating,
-        photo: preview, // keep the object URL alive for the list
+        photo: preview,
         text: form.text.trim(),
       });
-      setPreview(""); // list now owns the URL, so don't revoke it on reset
+      setPreview("");
       setForm((f) => ({ ...f, rating: 0, text: "", file: null }));
       if (fileRef.current) fileRef.current.value = "";
       setStatus("done");
@@ -470,15 +646,44 @@ function ReviewForm({ onAdd, onSubmitReview }) {
   );
 }
 
- function ProductTabs({
-  description = sample.description,
-  info = sample.info,
-  initialReviews = sample.reviews,
+function ProductTabs({
+  product,
+  categoryName = "",
+  initialReviews = sampleReviews,
   onSubmitReview,
 }) {
   const [tab, setTab] = useState("description");
   const [reviews, setReviews] = useState(initialReviews);
   const tabRefs = useRef({});
+
+  // Description: split the product description into paragraphs
+  const description = useMemo(
+    () =>
+      String(product?.description ?? "")
+        .split(/\n+/)
+        .map((p) => p.trim())
+        .filter(Boolean),
+    [product]
+  );
+
+  // Additional information: built from the real product data
+  const info = useMemo(() => {
+    const variants = product?.variants ?? [];
+    const unique = (key) => [...new Set(variants.map((v) => v[key]).filter(Boolean))];
+
+    const rows = [
+      ["Brand", product?.brand],
+      ["Material", product?.material],
+      ["Audience", product?.audience],
+      ["Category", categoryName],
+      ["Colors", unique("color").join(", ")],
+      ["Sizes", unique("size").join(", ")],
+      ["Size type", unique("sizeType").join(", ")],
+      ["Size system", unique("sizeSystem").join(", ")],
+    ];
+
+    return rows.filter(([, value]) => value);
+  }, [product, categoryName]);
 
   const onKey = (e) => {
     const i = TABS.findIndex((t) => t.id === tab);
@@ -517,29 +722,31 @@ function ReviewForm({ onAdd, onSubmitReview }) {
       {/* Description */}
       <div role="tabpanel" id="panel-description" aria-labelledby="tab-description" hidden={tab !== "description"} className="pt-6 text-[13px] leading-relaxed text-neutral-600">
         <p className="mb-5">Product Description</p>
-        {description.map((block, i) =>
-          typeof block === "string" ? (
-            <p key={i} className="mb-4">{block}</p>
-          ) : (
-            <ul key={i} className="mb-4 list-disc pl-6">
-              {block.list.map((li) => <li key={li}>{li}</li>)}
-            </ul>
-          )
+        {description.length > 0 ? (
+          description.map((p, i) => (
+            <p key={i} className="mb-4">{p}</p>
+          ))
+        ) : (
+          <p className="mb-4">No description available.</p>
         )}
       </div>
 
       {/* Additional information */}
       <div role="tabpanel" id="panel-info" aria-labelledby="tab-info" hidden={tab !== "info"} className="pt-6 text-[13px]">
-        <table className="w-full max-w-xl border-collapse">
-          <tbody>
-            {info.map(([k, v]) => (
-              <tr key={k} className="border-b border-neutral-200">
-                <th scope="row" className="w-40 py-2 pr-4 text-left font-normal">{k}</th>
-                <td className="py-2 text-neutral-600">{v}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {info.length > 0 ? (
+          <table className="w-full max-w-xl border-collapse">
+            <tbody>
+              {info.map(([k, v]) => (
+                <tr key={k} className="border-b border-neutral-200">
+                  <th scope="row" className="w-40 py-2 pr-4 text-left font-normal">{k}</th>
+                  <td className="py-2 text-neutral-600">{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="text-neutral-500">No additional information available.</p>
+        )}
       </div>
 
       {/* Reviews + form */}
@@ -572,7 +779,7 @@ const categories = [
   { name: "Clothes", image: "/images/clothes.jpg", href: "/category/digital-watches" },
   { name: "PlayStations", image: "/images/cat3.jpg", href: "/category/joysticks" },
   { name: "Watches", image: "/images/cat4.jpg", href: "/category/earpods" },
-  { name: "Shoes", image: "/images/cat1.jpg", href: "/category/phones" },
+
 
  
 ];

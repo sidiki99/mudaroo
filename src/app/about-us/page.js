@@ -22,7 +22,7 @@ export default function AboutUs(){
         />
         <Features />
         <VideoFeature />
-        <LatestPosts />
+        {/* <LatestPosts /> */}
         <BrandMarquee />
 
       </>

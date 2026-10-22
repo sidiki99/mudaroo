@@ -28,7 +28,7 @@ export default function Shop() {
         ]}
       />
       <ShopPage />
-      <LatestPosts />
+      {/* <LatestPosts /> */}
       <BrandMarquee />
       
     </main>

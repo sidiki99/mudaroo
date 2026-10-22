@@ -7,26 +7,26 @@ const categorySchema = new mongoose.Schema(
       type: String,
       required: [true, "Category name is required"],
       trim: true,
+      maxlength: [100, "Category name cannot exceed 100 characters"],
     },
 
     slug: {
       type: String,
       required: [true, "Category slug is required"],
       unique: true,
-      lowercase: true,
       trim: true,
+      lowercase: true,
     },
 
     description: {
       type: String,
-      default: "",
       trim: true,
+      default: "",
     },
 
     image: {
       type: String,
       default: "",
-      trim: true,
     },
 
     parent: {

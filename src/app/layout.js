@@ -5,6 +5,7 @@ import "@mantine/core/styles.css";
 import "@mantine/carousel/styles.css";
 import Providers from "./providers";
 import Footer from "./components/common/Footer";
+import { Suspense } from "react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,7 +29,9 @@ export default function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Header/>
+         <Suspense fallback={<div>Loading Header...</div>}>
+              <Header />
+            </Suspense>
          <Providers>
                  {children}
          </Providers>
