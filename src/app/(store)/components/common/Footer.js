@@ -13,9 +13,9 @@ import {
 
 const quickLinks = [
   { label: "Home", href: "/" },
-  { label: "About", href: "/about" },
+  { label: "About", href: "/about-us" },
   { label: "Shop", href: "/shop" },
-  { label: "Blogs", href: "/blogs" },
+  
   { label: "Contact", href: "/contact" },
 ];
 
@@ -32,7 +32,7 @@ const socials = [
   { icon: FaInstagram, href: "#", label: "Instagram" },
   { icon: FaTwitter, href: "#", label: "Twitter" },
   // { icon: FaLinkedIn, href: "#", label: "LinkedIn" },
-  { icon:  FaYoutube, href: "#", label: "YouTubeIcon" },
+  { icon:  FaYoutube, href: "https://www.youtube.com", label: "YouTubeIcon" },
 ];
 
 function LinkColumn({ title, links }) {
@@ -64,8 +64,9 @@ export default function Footer() {
         {/* Brand */}
         <div>
           <Link href="/" className="text-2xl tracking-wide">
-            <span className="font-semibold text-gray-800">SHOP</span>
-            <span className="font-light text-gray-500">LITE</span>
+            <span className="font-semibold text-gray-800">MU</span>
+            <span className="font-light text-gray-500">DAR</span>
+            <span className="font-semibold text-gray-800">OO</span>
           </Link>
           <p className="mt-3 max-w-[220px] text-[13px] font-light leading-snug">
             Nisi, purus vitae, ultrices nunc. Sit ac sit suscipit hendrerit.
@@ -103,7 +104,7 @@ export default function Footer() {
             href="mailto:yourinfo@gmail.com"
             className="text-[13px] font-light underline underline-offset-2 hover:text-[#f2694a]"
           >
-            yourinfo@gmail.com
+            msidiki075@gmail.com
           </a>
 
           <p className="mt-3 max-w-[170px] text-[13px] font-light leading-snug">
@@ -113,7 +114,7 @@ export default function Footer() {
             href="tel:+551112223344"
             className="text-[13px] font-light underline underline-offset-2 hover:text-[#f2694a]"
           >
-            +55 111 222 333 44
+            +92 327 73 79 390
           </a>
         </div>
       </div>

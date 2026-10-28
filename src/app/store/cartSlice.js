@@ -10,51 +10,86 @@ const cartSlice = createSlice({
   initialState,
 
   reducers: {
-    // Add a product or increase its quantity
     addToCart: (state, action) => {
-      const { product, quantity = 1, size, color } = action.payload;
+      const {
+        product,
+        quantity = 1,
+        size,
+        color,
+        variantId,
+        sku,
+        image,
+      } = action.payload;
 
-      const existingItem = state.items.find(
-        (item) =>
-          item.productId === product._id &&
+      const productId = product?._id;
+
+      if (!productId) return;
+
+      const existingItem = state.items.find((item) => {
+        if (variantId && item.variantId) {
+          return (
+            item.productId === productId &&
+            item.variantId === variantId
+          );
+        }
+
+        return (
+          item.productId === productId &&
           item.size === size &&
           item.color === color
-      );
+        );
+      });
 
       if (existingItem) {
         existingItem.quantity += quantity;
       } else {
         state.items.push({
-          productId: product._id,
-          title: product.title,
-          price: product.price,
-          image: product.images?.[0] || product.image || "",
-          size,
-          color,
+          productId,
+          variantId: variantId || null,
+          sku: sku || "",
+          name: product.name || product.title || "",
+          title: product.title || product.name || "",
+          slug: product.slug || "",
+          price: product.price ?? 0,
+          image:
+            image ||
+            product.images?.[0] ||
+            product.image ||
+            "",
+          size: size || "",
+          color: color || "",
           quantity,
         });
       }
     },
 
-    // Increase quantity
     increaseQuantity: (state, action) => {
-      const item = state.items.find(
-        (item) => item.productId === action.payload.productId &&
-          item.size === action.payload.size &&
-          item.color === action.payload.color
+      const { productId, variantId, size, color } =
+        action.payload;
+
+      const item = state.items.find((item) =>
+        variantId && item.variantId
+          ? item.productId === productId &&
+            item.variantId === variantId
+          : item.productId === productId &&
+            item.size === size &&
+            item.color === color
       );
 
-      if (item) {
-        item.quantity += 1;
-      }
+      if (item) item.quantity += 1;
     },
 
-    // Decrease quantity
     decreaseQuantity: (state, action) => {
-      const item = state.items.find(
-        (item) => item.productId === action.payload.productId &&
-          item.size === action.payload.size &&
-          item.color === action.payload.color
+      const { productId, variantId, size, color } =
+        action.payload;
+
+      const item = state.items.find((item) =>
+        variantId && item.variantId
+          ? item.productId === productId &&
+            item.variantId === variantId
+          : item.productId === productId &&
+            item.size === size &&
+            item.color === color
       );
 
       if (item && item.quantity > 1) {
@@ -62,26 +97,34 @@ const cartSlice = createSlice({
       }
     },
 
-    // Remove an item from the cart
     removeFromCart: (state, action) => {
-      state.items = state.items.filter(
-        (item) =>
-          !(
-            item.productId === action.payload.productId &&
-            item.size === action.payload.size &&
-            item.color === action.payload.color
-          )
-      );
+      const { productId, variantId, size, color } =
+        action.payload;
+
+      state.items = state.items.filter((item) => {
+        if (variantId && item.variantId) {
+          return !(
+            item.productId === productId &&
+            item.variantId === variantId
+          );
+        }
+
+        return !(
+          item.productId === productId &&
+          item.size === size &&
+          item.color === color
+        );
+      });
     },
 
-    // Clear the entire cart
     clearCart: (state) => {
       state.items = [];
     },
 
-    // Restore a saved cart
     setCart: (state, action) => {
-      state.items = action.payload;
+      state.items = Array.isArray(action.payload)
+        ? action.payload
+        : [];
     },
   },
 });

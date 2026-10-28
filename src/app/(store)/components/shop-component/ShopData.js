@@ -25,7 +25,7 @@ export default function useBaseProducts() {
 
   useEffect(() => {
     let cancelled = false;
-
+    
     async function fetchShopData() {
       try {
         setLoading(true);

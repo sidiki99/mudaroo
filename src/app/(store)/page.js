@@ -141,8 +141,8 @@ export default function Home(){
                 </p>
 
                 <a
-                  href={`/products/${product.slug}`}
-                  className="inline-block rounded-full bg-[#ff6a3d] px-[26px] py-2.5 text-[10px] uppercase tracking-[0.1em] text-white hover:brightness-95"
+                  href={`/product/${product.slug}`}
+                  className="inline-block rounded-full bg-[#ff6a3d] px-[26px] py-2.5 text-[10px] uppercase tracking-[0.1em] text-white hover:brightness-95 cursor-pointer"
                 >
                   Shop Now
                 </a>
@@ -474,8 +474,8 @@ function CategoriesSection() {
                 </p>
 
                 <a
-                  href={`/products/${product.slug}`}
-                  className="inline-block rounded-full bg-[#ff6a3d] px-[26px] py-2.5 text-[10px] uppercase tracking-[0.1em] text-white hover:brightness-95"
+                  href={`/product/${product.slug}`}
+                  className="inline-block rounded-full bg-[#ff6a3d] px-[26px] py-2.5 text-[10px] uppercase tracking-[0.1em] text-white hover:brightness-95 cursor-pointer"
                 >
                   Shop Now
                 </a>
@@ -554,7 +554,7 @@ function ProductRow({ product, onSale = false }) {
   return (
     <li className="border border-neutral-100 py-4 first:pt-0 last:border-b-0 last:pb-0 transition-shadow hover:shadow-lg">
       <Link
-        href={`/products/${product.slug}`}
+        href={`/product/${product.slug}`}
         className="flex items-center gap-3"
       >
         <div className="relative h-[50px] w-[50px] shrink-0 overflow-hidden rounded bg-neutral-100">

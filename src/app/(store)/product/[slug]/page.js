@@ -6,6 +6,9 @@ import { Suspense } from "react";
 import { useParams , useRouter} from "next/navigation";
 import api from "@/lib/axios";
 import { useEffect, useId, useRef,} from "react";
+import { useDispatch,useSelector } from "react-redux";
+import { addToCart } from "@/app/store/cartSlice";
+import { addToWishlist, removeFromWishlist } from "@/app/store/wishlistSlice";
 
 
 
@@ -41,6 +44,29 @@ const money = (n) => `Rs. ${Number(n ?? 0).toLocaleString()}`;
   const [size, setSize] = useState(null);
   const [qty, setQty] = useState(1);
   const [wished, setWished] = useState(false);
+
+  const dispatch = useDispatch();
+
+  const wishlistItems = useSelector(
+  (state) => state.wishlist.items
+);
+
+const isWishlisted = wishlistItems.some(
+  (item) => item._id === product._id
+);
+
+function handleWishlist() {
+  if (isWishlisted) {
+    dispatch(removeFromWishlist(product._id));
+  } else {
+    dispatch(addToWishlist(product));
+  }
+}
+
+
+ 
+
+
 
   useEffect(() => {
     let cancelled = false;
@@ -149,67 +175,48 @@ const cartItem = variant && {
 };
 
 
-  // const onAddToCart = (item) => {
-  //   if (!item) return;
-  //   try {
-  //     const cart = JSON.parse(localStorage.getItem("cart") || "[]");
-  //     const existing = cart.find((c) => c.sku === item.sku);
-  //     if (existing) {
-  //       existing.quantity = Math.min(stock, existing.quantity + item.quantity);
-  //     } else {
-  //       cart.push(item);
-  //     }
-  //     localStorage.setItem("cart", JSON.stringify(cart));
-  //   } catch {
-  //     /* ignore */
-  //   }
-  // };
+const onAddToCart = (item) => {
+  if (!item) {
+    alert("Please select a product variant.");
+    return false;
+  }
 
-  
-const onAddToCart = async (item) => {
-  try {
-    if (!item) {
-      throw new Error("Please select a product variant.");
-    }
+  if (!item.variantId || !item.productId) {
+    alert("Product or variant information is missing.");
+    return false;
+  }
 
-    const res = await api.post("/carts/items", {
-      productId: item.productId,
+  dispatch(
+    addToCart({
+      product: {
+        _id: item.productId,
+        name: item.name,
+        slug: item.slug,
+        images: item.image ? [item.image] : [],
+        price: item.price,
+      },
       variantId: item.variantId,
       quantity: item.quantity,
-    });
+      size: item.size,
+      color: item.color,
+      sku: item.sku,
+      image: item.image,
+    })
+  );
 
-    if (!res.data.success) {
-      throw new Error(
-        res.data.message || "Could not add product to cart."
-      );
-    }
+  alert("Product added to cart successfully!");
+  return true;
+};
 
-    console.log("Cart updated:", res.data.cart);
+const onOrderNow = (item) => {
+  const added = onAddToCart(item);
 
-    // Show success message here if you use a toast library
-    alert("Product added to cart successfully!");
-
-    return res.data.cart;
-  } catch (err) {
-    const message =
-      err.response?.data?.message ||
-      err.message ||
-      "Failed to add product to cart.";
-
-    console.error("Add to cart error:", message);
-    alert(message);
-
-    return null;
+  if (added) {
+    router.push("/checkout");
   }
 };
 
 
-
-
-  const onOrderNow = (item) => {
-    onAddToCart(item);
-    router.push("/checkout");
-  };
 
   /* ---------- UI ---------- */
 
@@ -382,18 +389,19 @@ const onAddToCart = async (item) => {
             Add to cart
           </button>
           <button
+           onClick={handleWishlist}
             type="button"
-            aria-pressed={wished}
-            aria-label={wished ? "Remove from wishlist" : "Add to wishlist"}
-            onClick={() => setWished(!wished)}
+            aria-pressed={ isWishlisted}
+            aria-label={ isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+            // onClick={() => setWished(! isWishlisted}
             className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-white transition ${
-              wished ? "bg-[#ff6a45]" : "bg-neutral-900 hover:bg-neutral-700"
+               isWishlisted ? "bg-[#ff6a45]" : "bg-neutral-900 hover:bg-neutral-700"
             }`}
           >
             <svg
               viewBox="0 0 24 24"
               className="h-4 w-4"
-              fill={wished ? "currentColor" : "none"}
+              fill={isWishlisted ? "currentColor" : "none"}
               stroke="currentColor"
               strokeWidth="2"
             >
