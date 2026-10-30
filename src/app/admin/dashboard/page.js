@@ -23,15 +23,20 @@ import {
   YAxis,
 } from "recharts";
 
-// -----------------------------------------------------------------------------
-// CONFIGURATION
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
+// API CONFIGURATION
+// --------------------------------------------------
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 const DASHBOARD_ENDPOINT = "/api/admin/dashboard";
-const REVENUE_ENDPOINT = "/api/dashboard/revenue";
-const STATUS_ENDPOINT = "/api/dashboard/order-status";
+
+// Based on the revenue route you provided:
+// src/app/api/admin/revenue/route.js
+const REVENUE_ENDPOINT = "/api/admin/dashboard/revenue";
+
+// Based on your existing order-status endpoint.
+const STATUS_ENDPOINT = "/api/admin/dashboard/order-status";
 
 const RANGES = [
   { label: "Last 7 days", days: 7 },
@@ -40,11 +45,12 @@ const RANGES = [
 ];
 
 const STATUSES = [
-  { key: "pending", label: "Pending", color: "#F6B93B" },
-  { key: "processing", label: "Processing", color: "#4C9AF5" },
-  { key: "shipped", label: "Shipped", color: "#4CC38A" },
-  { key: "delivered", label: "Delivered", color: "#2E9E5B" },
-  { key: "cancelled", label: "Cancelled", color: "#F2705A" },
+  { key: "pending", label: "Pending", color: "#F59E0B" },
+  { key: "processing", label: "Processing", color: "#3B82F6" },
+  { key: "shipped", label: "Shipped", color: "#8B5CF6" },
+  { key: "delivered", label: "Delivered", color: "#10B981" },
+  { key: "cancelled", label: "Cancelled", color: "#EF4444" },
+  { key: "returned", label: "Returned", color: "#6B7280" },
 ];
 
 const OVERVIEW_CARDS = [
@@ -78,42 +84,79 @@ const OVERVIEW_CARDS = [
   },
 ];
 
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
 // HELPERS
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
 
 function formatPKR(value) {
   const number = Number(value) || 0;
 
-  if (number >= 1_000_000) {
+  if (Math.abs(number) >= 1_000_000) {
     return `PKR ${(number / 1_000_000).toFixed(1)}M`;
   }
 
-  if (number >= 1_000) {
-    return `PKR ${(number / 1_000).toFixed(0)}K`;
+  if (Math.abs(number) >= 1_000) {
+    return `PKR ${(number / 1_000).toFixed(1)}K`;
   }
 
   return `PKR ${number.toLocaleString("en-PK")}`;
 }
 
 function formatDay(value) {
+  // Parse YYYY-MM-DD as a local calendar date.
+  if (typeof value === "string") {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (match) {
+      return new Date(
+        Number(match[1]),
+        Number(match[2]) - 1,
+        Number(match[3])
+      ).toLocaleDateString("en-PK", {
+        month: "short",
+        day: "numeric",
+      });
+    }
+  }
+
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
     return String(value ?? "");
   }
 
-  return date.toLocaleDateString("en-US", {
+  return date.toLocaleDateString("en-PK", {
     month: "short",
     day: "numeric",
   });
 }
 
+function formatChange(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+
+  return `${number > 0 ? "+" : ""}${number}%`;
+}
+
+// --------------------------------------------------
+// NORMALIZE API RESPONSES
+// --------------------------------------------------
+
 function normalizeOverview(json) {
   const raw = json?.data ?? json?.stats ?? json;
 
-  // Supports responses such as { success: true, data: {...} }.
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (
+    !raw ||
+    typeof raw !== "object" ||
+    Array.isArray(raw)
+  ) {
     return null;
   }
 
@@ -121,7 +164,10 @@ function normalizeOverview(json) {
 }
 
 function normalizeRevenue(json) {
+  // Supports { success: true, data: [...] }
+  // and a direct array response.
   const raw = json?.data ?? json;
+
   const rows = Array.isArray(raw)
     ? raw
     : raw?.items ?? raw?.results ?? [];
@@ -135,51 +181,61 @@ function normalizeRevenue(json) {
     revenue: Number(
       row.revenue ?? row.total ?? row.amount ?? 0
     ),
-  }));
+  })).filter((row) => row.date != null);
 }
 
 function normalizeStatus(json) {
+  // Your status API returns { success: true, data: [...] }
   const raw = json?.data ?? json;
+
+  const rows = Array.isArray(raw)
+    ? raw
+    : raw?.orders ?? raw?.items ?? [];
+
   const counts = {};
 
-  if (Array.isArray(raw)) {
-    raw.forEach((row) => {
+  if (Array.isArray(rows)) {
+    rows.forEach((row) => {
       const key = String(
-        row.status ?? row.name ?? ""
+        row.key ?? row.status ?? row.name ?? ""
       ).toLowerCase();
 
-      counts[key] = Number(
-        row.count ?? row.total ?? row.value ?? 0
-      );
+      if (!key) return;
+
+      counts[key] =
+        (counts[key] || 0) +
+        Number(row.value ?? row.count ?? row.total ?? 0);
     });
   } else if (raw && typeof raw === "object") {
     Object.entries(raw).forEach(([key, value]) => {
-      // Also supports { orders: [{ status, count }] }.
-      if (key === "orders" && Array.isArray(value)) {
-        value.forEach((row) => {
-          const status = String(
-            row.status ?? row.name ?? ""
-          ).toLowerCase();
+      const normalizedKey = key.toLowerCase();
 
-          counts[status] = Number(
-            row.count ?? row.total ?? row.value ?? 0
-          );
-        });
-      } else {
-        counts[key.toLowerCase()] = Number(value) || 0;
+      // Ignore response metadata.
+      if (["success", "message"].includes(normalizedKey)) {
+        return;
+      }
+
+      const count =
+        typeof value === "number" ||
+        typeof value === "string"
+          ? Number(value)
+          : NaN;
+
+      if (Number.isFinite(count)) {
+        counts[normalizedKey] = count;
       }
     });
   }
 
   return STATUSES.map((status) => ({
     ...status,
-    value: counts[status.key] || 0,
+    value: counts[status.key] ?? 0,
   }));
 }
 
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
 // SHARED FETCH HOOK
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
 
 function useDashboardFetch(url, normalize, refreshKey) {
   const [data, setData] = useState(null);
@@ -203,17 +259,25 @@ function useDashboardFetch(url, normalize, refreshKey) {
           },
         });
 
+        const json = await response.json().catch(() => null);
+
         if (!response.ok) {
           throw new Error(
-            `Request failed (${response.status})`
+            json?.message || `Request failed (${response.status})`
           );
         }
 
-        const json = await response.json();
+        if (json?.success === false) {
+          throw new Error(
+            json.message || "The API could not load the data."
+          );
+        }
+
         setData(normalize(json));
       } catch (err) {
         if (err.name !== "AbortError") {
           setError(err.message || "Something went wrong.");
+          setData(null);
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -230,9 +294,9 @@ function useDashboardFetch(url, normalize, refreshKey) {
   return { data, loading, error };
 }
 
-// -----------------------------------------------------------------------------
-// REUSABLE UI COMPONENTS
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
+// REUSABLE COMPONENTS
+// --------------------------------------------------
 
 function Card({ title, action, children }) {
   return (
@@ -275,6 +339,8 @@ function StatCard({
   change,
   loading,
 }) {
+  const formattedChange = formatChange(change);
+
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
@@ -291,9 +357,17 @@ function StatCard({
             </p>
           )}
 
-          {!loading && change != null && (
-            <p className="mt-2 text-xs text-slate-500">
-              Change: {change}
+          {!loading && formattedChange !== null && (
+            <p
+              className={`mt-2 text-xs ${
+                Number(change) > 0
+                  ? "text-green-600"
+                  : Number(change) < 0
+                    ? "text-red-600"
+                    : "text-slate-500"
+              }`}
+            >
+              Change: {formattedChange} vs previous 7 days
             </p>
           )}
         </div>
@@ -306,9 +380,9 @@ function StatCard({
   );
 }
 
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
 // OVERVIEW CARDS
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
 
 function OverviewCards({ refreshKey, onRefresh }) {
   const {
@@ -365,31 +439,43 @@ function OverviewCards({ refreshKey, onRefresh }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        {OVERVIEW_CARDS.map((card) => (
-          <StatCard
-            key={card.label}
-            label={card.label}
-            icon={card.icon}
-            loading={loading || !stats}
-            value={stats ? card.value(stats) : ""}
-            change={stats ? card.change(stats) : undefined}
-          />
-        ))}
-      </div>
-
-      {!loading && !error && !stats && (
-        <p className="mt-5 text-sm text-slate-500">
-          No dashboard statistics are available yet.
+      {error ? null : stats ? (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {OVERVIEW_CARDS.map((card) => (
+            <StatCard
+              key={card.label}
+              label={card.label}
+              icon={card.icon}
+              loading={loading}
+              value={card.value(stats)}
+              change={card.change(stats)}
+            />
+          ))}
+        </div>
+      ) : loading ? (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {OVERVIEW_CARDS.map((card) => (
+            <div
+              key={card.label}
+              className="rounded-2xl border border-slate-200 bg-white p-5"
+            >
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="mt-4 h-8 w-28" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500">
+          No dashboard statistics are available.
         </p>
       )}
     </div>
   );
 }
 
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
 // REVENUE TOOLTIP
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
 
 function RevenueTooltip({ active, payload, label }) {
   if (!active || !payload?.length) {
@@ -399,6 +485,7 @@ function RevenueTooltip({ active, payload, label }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-md">
       <p className="text-slate-500">{formatDay(label)}</p>
+
       <p className="mt-1 font-semibold text-slate-900">
         PKR {Number(payload[0].value || 0).toLocaleString("en-PK")}
       </p>
@@ -406,9 +493,9 @@ function RevenueTooltip({ active, payload, label }) {
   );
 }
 
-// -----------------------------------------------------------------------------
-// REVENUE OVERVIEW
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
+// REVENUE CHART
+// --------------------------------------------------
 
 function RevenueOverview({ refreshKey }) {
   const [days, setDays] = useState(7);
@@ -420,6 +507,15 @@ function RevenueOverview({ refreshKey }) {
     loading,
     error,
   } = useDashboardFetch(url, normalizeRevenue, refreshKey);
+
+  const totalRevenue = useMemo(
+    () =>
+      (data || []).reduce(
+        (sum, item) => sum + item.revenue,
+        0
+      ),
+    [data]
+  );
 
   return (
     <Card
@@ -445,91 +541,95 @@ function RevenueOverview({ refreshKey }) {
         <ErrorState message={error} />
       ) : !data?.length ? (
         <div className="flex h-52 items-center justify-center text-sm text-slate-400">
-          No revenue recorded in this period.
+          No revenue data available for this period.
         </div>
       ) : (
-        <div className="h-52 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={data}
-              margin={{ top: 5, right: 8, left: 0, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient
-                  id="mudarooRevenueFill"
-                  x1="0"
-                  y1="0"
-                  x2="0"
-                  y2="1"
-                >
-                  <stop
-                    offset="0%"
-                    stopColor="#F97316"
-                    stopOpacity={0.28}
-                  />
-                  <stop
-                    offset="100%"
-                    stopColor="#F97316"
-                    stopOpacity={0.02}
-                  />
-                </linearGradient>
-              </defs>
+        <>
+          <p className="mb-3 text-sm text-slate-500">
+            Revenue in selected period:{" "}
+            <span className="font-semibold text-slate-900">
+              PKR {totalRevenue.toLocaleString("en-PK")}
+            </span>
+          </p>
 
-              <CartesianGrid
-                vertical={false}
-                stroke="#EEF0F3"
-              />
+          <div className="h-52 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={data}
+                margin={{ top: 5, right: 8, left: 0, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient
+                    id="mudarooRevenueFill"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop
+                      offset="0%"
+                      stopColor="#F97316"
+                      stopOpacity={0.28}
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor="#F97316"
+                      stopOpacity={0.02}
+                    />
+                  </linearGradient>
+                </defs>
 
-              <XAxis
-                dataKey="date"
-                tickFormatter={formatDay}
-                tickLine={false}
-                axisLine={false}
-                tick={{ fontSize: 10, fill: "#9CA3AF" }}
-                dy={6}
-              />
+                <CartesianGrid
+                  vertical={false}
+                  stroke="#EEF0F3"
+                />
 
-              <YAxis
-                tickFormatter={formatPKR}
-                tickLine={false}
-                axisLine={false}
-                width={62}
-                tick={{ fontSize: 10, fill: "#9CA3AF" }}
-              />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={formatDay}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 10, fill: "#9CA3AF" }}
+                  dy={6}
+                />
 
-              <Tooltip
-                content={<RevenueTooltip />}
-                cursor={{
-                  stroke: "#F97316",
-                  strokeOpacity: 0.2,
-                }}
-              />
+                <YAxis
+                  tickFormatter={formatPKR}
+                  tickLine={false}
+                  axisLine={false}
+                  width={62}
+                  tick={{ fontSize: 10, fill: "#9CA3AF" }}
+                />
 
-              <Area
-                type="monotone"
-                dataKey="revenue"
-                stroke="#F97316"
-                strokeWidth={2}
-                fill="url(#mudarooRevenueFill)"
-                dot={false}
-                activeDot={{
-                  r: 4,
-                  fill: "#F97316",
-                  stroke: "#fff",
-                  strokeWidth: 2,
-                }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+                <Tooltip content={<RevenueTooltip />} />
+
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  name="Revenue"
+                  stroke="#F97316"
+                  strokeWidth={2}
+                  fill="url(#mudarooRevenueFill)"
+                  dot={false}
+                  activeDot={{
+                    r: 4,
+                    fill: "#F97316",
+                    stroke: "#fff",
+                    strokeWidth: 2,
+                  }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </>
       )}
     </Card>
   );
 }
 
-// -----------------------------------------------------------------------------
-// ORDER STATUS
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
+// ORDER STATUS CHART
+// --------------------------------------------------
 
 function OrderStatus({ refreshKey }) {
   const {
@@ -543,7 +643,10 @@ function OrderStatus({ refreshKey }) {
   );
 
   const total = useMemo(
-    () => (data || []).reduce((sum, status) => sum + status.value, 0),
+    () => (data || []).reduce(
+      (sum, status) => sum + status.value,
+      0
+    ),
     [data]
   );
 
@@ -561,8 +664,8 @@ function OrderStatus({ refreshKey }) {
                 <Pie
                   data={
                     total
-                      ? data
-                      : [{ key: "empty", value: 1, color: "#F3F4F6" }]
+                      ? data.filter((status) => status.value > 0)
+                      : [{ key: "empty", label: "No orders", value: 1, color: "#F3F4F6" }]
                   }
                   dataKey="value"
                   nameKey="label"
@@ -575,7 +678,7 @@ function OrderStatus({ refreshKey }) {
                   endAngle={-270}
                 >
                   {(total
-                    ? data
+                    ? data.filter((status) => status.value > 0)
                     : [{ key: "empty", color: "#F3F4F6" }]
                   ).map((status) => (
                     <Cell
@@ -601,6 +704,7 @@ function OrderStatus({ refreshKey }) {
               <span className="text-2xl font-bold leading-none text-slate-900">
                 {total.toLocaleString("en-PK")}
               </span>
+
               <span className="mt-1 text-[11px] text-slate-500">
                 Total Orders
               </span>
@@ -633,9 +737,9 @@ function OrderStatus({ refreshKey }) {
   );
 }
 
-// -----------------------------------------------------------------------------
-// MAIN DASHBOARD EXPORT
-// -----------------------------------------------------------------------------
+// --------------------------------------------------
+// MAIN DASHBOARD
+// --------------------------------------------------
 
 export default function DashboardCards() {
   const [refreshKey, setRefreshKey] = useState(0);

@@ -43,7 +43,7 @@ const money = (n) => `Rs. ${Number(n ?? 0).toLocaleString()}`;
   const [color, setColor] = useState(null);
   const [size, setSize] = useState(null);
   const [qty, setQty] = useState(1);
-  const [wished, setWished] = useState(false);
+
 
   const dispatch = useDispatch();
 

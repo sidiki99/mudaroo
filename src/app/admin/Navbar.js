@@ -13,13 +13,13 @@ import {
 } from "lucide-react";
 
 const links = [
-  { name: "Overview", href: "/dashboard", icon: Home },
-  { name: "Products", href: "/products", icon: Package },
-  { name: "Categories", href: "/categories", icon: FolderOpen },
-  { name: "Orders", href: "/orders", icon: ClipboardList },
-  { name: "Customers", href: "/customers", icon: Users },
-  { name: "Reviews", href: "/reviews", icon: Award },
-  { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Overview", href: "/admin/dashboard", icon: Home },
+  { name: "Products", href: "/admin/products", icon: Package },
+  { name: "Categories", href: "/admin/categories", icon: FolderOpen },
+  { name: "Orders", href: "/admin/orders", icon: ClipboardList },
+  { name: "Customers", href: "/admin/customers", icon: Users },
+  // { name: "Reviews", href: "/reviews", icon: Award },
+  // { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 export default function Sidebar() {
@@ -34,8 +34,9 @@ export default function Sidebar() {
         </h1> */}
 
         <p className="text-[22px] tracking-[3px] text-gray-800">
-                  <span className="font-bold">SHOP</span>
-                  <span className="font-light">LITE</span>
+                  <span className="font-bold">MU</span>
+                  <span className="font-light">DAR</span>
+                    <span className="font-bold">OO</span>
                 </p>
 
         <span className="text-[11px] font-semibold tracking-[0.35em] text-orange-500">

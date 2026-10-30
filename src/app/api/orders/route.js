@@ -6,12 +6,7 @@ import connectDB from "@/lib/db";
 import Order from "@/models/Order";
 import Product from "@/models/Product";
 import { verifyJWT } from "@/auth/varifyJWT";
-
-
-
-
-
-  //  GET /api/orders   
+ 
 
 export async function GET(request) {
   try {

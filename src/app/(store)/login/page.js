@@ -27,30 +27,43 @@ export default function LoginPage() {
     return e;
   };
 
-  const handleSubmit = async (ev) => {
-    ev.preventDefault();
-    const found = validate();
-    setErrors(found);
-    if (Object.keys(found).length) return;
+  
+const handleSubmit = async (ev) => {
+  ev.preventDefault();
 
-    setSubmitting(true);
-    try {
-      const { data } = await api.post("/login", form);
-      if (data.success) {
-        router.push("/");
+  const found = validate();
+  setErrors(found);
+
+  if (Object.keys(found).length) return;
+
+  setSubmitting(true);
+
+  try {
+    const { data } = await api.post("/login", form);
+
+    if (data.success) {
+      // Check the logged-in user's role
+      if (data.user?.role === "admin") {
+        router.push("/admin/dashboard");
       } else {
-        setErrors({ form: data.message || "Login failed. Check your details." });
+        router.push("/");
       }
-    } catch (err) {
+    } else {
       setErrors({
-        form:
-          err.response?.data?.message ||
-          "We couldn’t log you in. Check your details and try again.",
+        form: data.message || "Login failed. Check your details.",
       });
-    } finally {
-      setSubmitting(false);
     }
-  };
+  } catch (err) {
+    setErrors({
+      form:
+        err.response?.data?.message ||
+        "We couldn’t log you in. Check your details and try again.",
+    });
+  } finally {
+    setSubmitting(false);
+  }
+};
+
 
   return (
     <main className="min-h-screen bg-brand-bg text-brand-text flex items-center justify-center px-4 py-10 sm:px-6">

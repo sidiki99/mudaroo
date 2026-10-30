@@ -68,11 +68,14 @@ export default function Header() {
 
   const pageLinks = [
     { label: "Checkout", href: "/checkout" },
+    { label: "Admin", href: "/admin/dashboard" },
 
     ...(checkingAuth
       ? []
       : user
-        ? [{ label: "My Account", href: "/account" }]
+        ? [{ label: "My Account", href: "/profile" },
+          
+        ]
         : [
             { label: "Login", href: "/login" },
             { label: "Signup", href: "/signup" },
